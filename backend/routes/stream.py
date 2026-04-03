@@ -161,7 +161,9 @@ def _display_vec(rows):
 
 @router.websocket("/ws/{user_id}")
 async def stream(websocket: WebSocket, user_id: str):
+    print("WS CONNECT ATTEMPT")
     await websocket.accept()
+    print("WS CONNECTED")
     user_state[user_id] = _make_state()
     state = user_state[user_id]
 
