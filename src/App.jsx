@@ -59,7 +59,7 @@ function PopulationModal({ onSelect }) {
             </div>
             <div>
               <h2 className="text-white font-bold text-base">GhostAuth</h2>
-              <p className="text-white/40 text-xs">Behavioral Biometrics · Canara Bank</p>
+              <p className="text-white/40 text-xs">Behavioral Biometrics</p>
             </div>
           </div>
           <p className="text-white/60 text-sm mt-3 leading-relaxed">
@@ -171,7 +171,7 @@ export default function App() {
           </div>
           <div>
             <span className="text-white font-bold text-sm">GhostAuth</span>
-            <span className="text-white/30 text-xs ml-2">× Canara Bank · Behavioral LSTM · L0–L6</span>
+            <span className="text-white/30 text-xs ml-2">× DTU PayTM · Behavioral LSTM · L0–L6</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -288,7 +288,7 @@ export default function App() {
       {toast && <Toast {...toast} onClose={() => setToast(null)}/>}
 
       <div className="text-center py-2 text-xs text-white/12 border-t border-white/5">
-        Team Laxman Rekha · Canara Bank Hackathon · GhostAuth v2.0 · LSTM · DPDP Compliant
+        GhostAuth v2.0 · LSTM · DPDP Compliant
       </div>
     </div>
   );
