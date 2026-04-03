@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getTrustLevel, computeAuraHash } from './ghostauth';
 
-const WS_URL = 'ws://localhost:8000/ws/user123';
+const WS_URL = 'wss://ghostauth.onrender.com/ws/user123';
 
 const INITIAL_SCORE = 95;
 
