@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>GhostAuth — Browser Dataset Recorder</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #0a0f1c; color: #e0e0e0; padding: 1rem; }
+  h1 { color: #60a5fa; margin-bottom: 1rem; font-size: 1rem; }
+  .controls { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  select, input, button { padding: .4rem .8rem; border-radius: 6px; border: 1px solid #334; font-size: .85rem; }
+  select, input { background: #111827; color: #e0e0e0; }
+  button { cursor: pointer; font-weight: 600; }
+  .btn-start  { background: #16a34a; color: #fff; border-color: #16a34a; }
+  .btn-stop   { background: #dc2626; color: #fff; border-color: #dc2626; }
+  .btn-export { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .stats { display: grid; grid-template-columns: repeat(6,1fr); gap: .5rem; margin-bottom: 1rem; }
+  .stat { background: #111827; border: 1px solid #1e3a5f; border-radius: 6px; padding: .5rem; text-align: center; }
+  .stat-val { font-size: 1.4rem; font-weight: 700; color: #60a5fa; }
+  .stat-lbl { font-size: .65rem; color: #6b7280; margin-top: 2px; }
+  .phone-wrap { display: flex; gap: 1.5rem; }
+  .phone-outer { background: #1a1a2e; border-radius: 44px; padding: 10px; border: 6px solid #1e2235;
+                 box-shadow: 0 0 0 1px rgba(255,255,255,0.07), 0 20px 60px rgba(0,0,0,0.7); flex-shrink: 0; }
+  .phone { width: 360px; height: 640px; background: #0a0f1c; border-radius: 36px; overflow: hidden;
+           position: relative; cursor: crosshair; }
+  .phone-inner { width: 100%; height: 100%; overflow-y: auto; padding: 1rem; }
+  .rec-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+             background: #ef4444; animation: blink 1s step-end infinite; margin-right: 6px; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .log { flex: 1; background: #111827; border: 1px solid #1e3a5f; border-radius: 8px; padding: .75rem;
+         font-size: .72rem; max-height: 660px; overflow-y: auto; color: #9ca3af; line-height: 1.6; }
+  .log .row-move { color: #6b7280; }
+  .log .row-click { color: #34d399; }
+  .log .row-key { color: #f59e0b; }
+  .log .row-pause { color: #ef4444; font-weight: 700; }
+  .phone-btn { background: #1e3a8a; border: 1px solid #2563eb; color: #93c5fd; border-radius: 8px;
+               padding: .5rem .75rem; font-size: .8rem; cursor: pointer; width: 100%; margin-bottom: .5rem; }
+  .phone-btn:active { transform: scale(0.97); background: #1e40af; }
+  .phone-input { background: #111827; border: 1px solid #374151; border-radius: 6px;
+                 color: #e0e0e0; padding: .4rem .6rem; width: 100%; font-size: .8rem; margin-bottom: .5rem; }
+  .section { background: rgba(255,255,255,0.03); border: 1px solid #1e2235; border-radius: 10px;
+             padding: .75rem; margin-bottom: .75rem; }
+  .section-title { font-size: .7rem; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .5rem; }
+  .tx { display: flex; justify-content: space-between; align-items: center; padding: .35rem 0;
+        border-bottom: 1px solid #1e2235; font-size: .75rem; cursor: pointer; }
+  .tx:hover { color: #60a5fa; }
+  .tx-amt.cr { color: #34d399; }
+  .tx-amt.db { color: #9ca3af; }
+  .trajectory { position: absolute; inset: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<h1>🧠 GhostAuth — Browser Dataset Recorder</h1>
+
+<div class="controls">
+  <select id="label-sel">
+    <option value="legit">legit</option>
+    <option value="not_legit">not_legit</option>
+  </select>
+  <input id="session-id" placeholder="session_001" style="width:110px">
+  <button class="btn-start" onclick="startRec()">▶ Start</button>
+  <button class="btn-stop"  onclick="stopRec()">■ Stop</button>
+  <button class="btn-export" onclick="exportCSV()">⬇ Export CSV</button>
+  <span id="rec-label" style="color:#6b7280;font-size:.8rem">idle</span>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-val" id="s-rows">0</div><div class="stat-lbl">rows</div></div>
+  <div class="stat"><div class="stat-val" id="s-clicks">0</div><div class="stat-lbl">clicks</div></div>
+  <div class="stat"><div class="stat-val" id="s-moves">0</div><div class="stat-lbl">move rows</div></div>
+  <div class="stat"><div class="stat-val" id="s-pauses">0</div><div class="stat-lbl">pauses</div></div>
+  <div class="stat"><div class="stat-val" id="s-bs">0</div><div class="stat-lbl">backspaces</div></div>
+  <div class="stat"><div class="stat-val" id="s-hes">0</div><div class="stat-lbl">avg hes ms</div></div>
+</div>
+
+<div class="phone-wrap">
+  <!-- Fake banking phone UI -->
+  <div class="phone-outer">
+    <div class="phone" id="phone"
+      onmousemove="handleMove(event)"
+      onmousedown="handleDown(event)"
+      onmouseup="handleUp(event)"
+      onkeydown="handleKey(event)"
+      tabindex="0">
+      <canvas class="trajectory" id="traj-canvas" width="360" height="640"></canvas>
+      <div class="phone-inner">
+        <div class="section">
+          <div class="section-title">Canara Bank</div>
+          <div style="font-size:.75rem;color:#6b7280">Good afternoon, Arjun</div>
+          <div style="font-size:1.4rem;font-weight:700;margin:.4rem 0">₹ 1,24,750.80</div>
+          <div style="font-size:.7rem;color:#6b7280">A/C: •••• 4821</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin-bottom:.75rem">
+          <button class="phone-btn" onclick="phoneClick('send')">Send</button>
+          <button class="phone-btn" onclick="phoneClick('receive')">Receive</button>
+          <button class="phone-btn" onclick="phoneClick('bills')">Bills</button>
+          <button class="phone-btn" onclick="phoneClick('history')">History</button>
+        </div>
+        <div class="section">
+          <div class="section-title">Send Money</div>
+          <input class="phone-input" id="upi-input" placeholder="UPI ID / Mobile"
+            oninput="handlePhoneInput(event)" onkeydown="handleKey(event)">
+          <input class="phone-input" id="amt-input" placeholder="Amount ₹"
+            oninput="handlePhoneInput(event)" onkeydown="handleKey(event)">
+          <button class="phone-btn" onclick="phoneClick('send-money')">Send Money →</button>
+        </div>
+        <div class="section">
+          <div class="section-title">Recent Transactions</div>
+          <div class="tx" onclick="phoneClick('tx1')"><span>🛒 Amazon Pay</span><span class="tx-amt db">−₹2,499</span></div>
+          <div class="tx" onclick="phoneClick('tx2')"><span>💼 Salary</span><span class="tx-amt cr">+₹75,000</span></div>
+          <div class="tx" onclick="phoneClick('tx3')"><span>🍔 Swiggy</span><span class="tx-amt db">−₹340</span></div>
+          <div class="tx" onclick="phoneClick('tx4')"><span>📱 UPI Rahul</span><span class="tx-amt db">−₹5,000</span></div>
+          <div class="tx" onclick="phoneClick('tx5')"><span>📈 Dividend</span><span class="tx-amt cr">+₹1,250</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem">
+          <button class="phone-btn" onclick="phoneClick('nav-home')">🏠</button>
+          <button class="phone-btn" onclick="phoneClick('nav-pay')">💸</button>
+          <button class="phone-btn" onclick="phoneClick('nav-hist')">📋</button>
+          <button class="phone-btn" onclick="phoneClick('nav-prof')">👤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event log -->
+  <div class="log" id="log">waiting to start...<br></div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────
+const PHONE_W = 360, PHONE_H = 640;
+const PAUSE_THRESHOLD_MS = 1500;
+const BUCKET_MS = 100;
+
+// ── State ────────────────────────────────────────────────────────────
+let recording = false;
+let rows = [];
+let lastTs = null;
+let prevMove = null;
+let moveBuffer = [];
+let bucketTs = null;
+let clickTs = null;
+let counts = { clicks: 0, moves: 0, pauses: 0, bs: 0, hesSum: 0, hesN: 0 };
+
+// Trajectory canvas
+const canvas = document.getElementById('traj-canvas');
+const ctx = canvas.getContext('2d');
+let trailPoints = [];
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function now() { return performance.now() + performance.timeOrigin; }
+
+function hesitation(ts) {
+  const gap = lastTs === null ? 0 : ts - lastTs;
+  const pause = gap > PAUSE_THRESHOLD_MS ? 1 : 0;
+  lastTs = ts;
+  if (gap > 0) { counts.hesSum += gap; counts.hesN++; }
+  if (pause) counts.pauses++;
+  return [Math.round(gap * 100) / 100, pause];
+}
+
+function pushRow(row) {
+  rows.push(row);
+  document.getElementById('s-rows').textContent = rows.length;
+  document.getElementById('s-clicks').textContent = counts.clicks;
+  document.getElementById('s-moves').textContent = counts.moves;
+  document.getElementById('s-pauses').textContent = counts.pauses;
+  document.getElementById('s-bs').textContent = counts.bs;
+  document.getElementById('s-hes').textContent = counts.hesN ? Math.round(counts.hesSum / counts.hesN) : 0;
+}
+
+function flushMoveBuffer(ts) {
+  if (moveBuffer.length === 0) return;
+  const speeds = moveBuffer.map(m => m.speed);
+  const mean = speeds.reduce((a,b)=>a+b,0) / speeds.length;
+  const variance = speeds.reduce((a,b)=>a+(b-mean)**2,0) / speeds.length;
+  const dx = moveBuffer.reduce((a,m)=>a+Math.abs(m.dx),0);
+  const dy = moveBuffer.reduce((a,m)=>a+Math.abs(m.dy),0);
+  const lastM = moveBuffer[moveBuffer.length-1];
+  const [hes, pause] = hesitation(ts);
+  pushRow({
+    tap_duration_ms: 0, click_hold_ms: 0,
+    hesitation_ms: hes,
+    move_speed: +mean.toFixed(4), move_variance: +variance.toFixed(4),
+    dx: +dx.toFixed(2), dy: +dy.toFixed(2),
+    screen_zone: zone(lastM.x, lastM.y),
+    is_backspace: 0, key_hold_ms: 0, pause_flag: pause
+  });
+  counts.moves++;
+  moveBuffer = [];
+  bucketTs = ts;
+  logLine(`<span class="row-move">move  spd=${mean.toFixed(3)} var=${variance.toFixed(4)} hes=${hes}ms${pause?' ⏸':''}</span>`);
+}
+
+function zone(x, y) {
+  const col = Math.min(Math.floor(x / (PHONE_W / 3)), 2);
+  const row = Math.min(Math.floor(y / (PHONE_H / 3)), 2);
+  return row * 3 + col + 1;
+}
+
+function logLine(html) {
+  const log = document.getElementById('log');
+  log.innerHTML = html + '<br>' + log.innerHTML.slice(0, 4000);
+}
+
+// ── Event handlers ───────────────────────────────────────────────────
+function handleMove(e) {
+  if (!recording) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const ts = now();
+
+  let speed = 0;
+  if (prevMove) {
+    const dx = x - prevMove.x, dy = y - prevMove.y;
+    const dt = Math.max(ts - prevMove.ts, 1);
+    speed = Math.sqrt(dx*dx + dy*dy) / dt;
+  }
+  prevMove = { x, y, ts };
+
+  if (bucketTs === null) bucketTs = ts;
+  moveBuffer.push({ dx: e.movementX, dy: e.movementY, speed, x, y });
+
+  if (ts - bucketTs >= BUCKET_MS && moveBuffer.length > 0) {
+    flushMoveBuffer(ts);
+  }
+
+  // Draw trail
+  trailPoints.push({ x, y, ts });
+  trailPoints = trailPoints.filter(p => ts - p.ts < 1500);
+  drawTrail();
+}
+
+function handleDown(e) {
+  if (!recording) return;
+  clickTs = now();
+}
+
+function handleUp(e) {
+  if (!recording) return;
+  const ts = now();
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const hold = clickTs ? Math.min(ts - clickTs, 2000) : 0;
+  const [hes, pause] = hesitation(ts);
+  counts.clicks++;
+  if (moveBuffer.length > 0) flushMoveBuffer(ts);
+  pushRow({
+    tap_duration_ms: +hold.toFixed(2), click_hold_ms: +hold.toFixed(2),
+    hesitation_ms: hes, move_speed: 0, move_variance: 0, dx: 0, dy: 0,
+    screen_zone: zone(x, y), is_backspace: 0, key_hold_ms: 0, pause_flag: pause
+  });
+  logLine(`<span class="row-click">click (${x.toFixed(0)},${y.toFixed(0)}) hold=${hold.toFixed(0)}ms hes=${hes}ms zone=${zone(x,y)}</span>`);
+  clickTs = null;
+}
+
+function handleKey(e) {
+  if (!recording) return;
+  const ts = now();
+  const isBS = e.code === 'Backspace';
+  if (isBS) counts.bs++;
+  const [hes, pause] = hesitation(ts);
+  pushRow({
+    tap_duration_ms: 0, click_hold_ms: 0, hesitation_ms: hes,
+    move_speed: 0, move_variance: 0, dx: 0, dy: 0, screen_zone: 0,
+    is_backspace: isBS ? 1 : 0, key_hold_ms: 0, pause_flag: pause
+  });
+  logLine(`<span class="row-key">key ${e.code}${isBS?' ⬅':''} hes=${hes}ms</span>`);
+}
+
+function handlePhoneInput(e) {
+  // Input field typing — just focus the phone div so keys register
+  document.getElementById('phone').focus();
+}
+
+function phoneClick(action) {
+  if (!recording) return;
+  logLine(`<span class="row-click">tap: ${action}</span>`);
+}
+
+// ── Recording lifecycle ───────────────────────────────────────────────
+function startRec() {
+  rows = []; moveBuffer = []; lastTs = null; prevMove = null;
+  bucketTs = null; clickTs = null;
+  counts = { clicks: 0, moves: 0, pauses: 0, bs: 0, hesSum: 0, hesN: 0 };
+  recording = true;
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('s-rows').textContent = '0';
+  const label = document.getElementById('label-sel').value;
+  const sid = document.getElementById('session-id').value || 'session_001';
+  document.getElementById('rec-label').innerHTML = `<span class="rec-dot"></span>recording [${label}] ${sid}`;
+  document.getElementById('rec-label').style.color = '#ef4444';
+  document.getElementById('phone').focus();
+}
+
+function stopRec() {
+  recording = false;
+  document.getElementById('rec-label').textContent = `✓ stopped — ${rows.length} rows`;
+  document.getElementById('rec-label').style.color = '#34d399';
+  if (moveBuffer.length > 0) flushMoveBuffer(now());
+}
+
+function exportCSV() {
+  if (rows.length === 0) { alert('No rows — start and interact first'); return; }
+  const label = document.getElementById('label-sel').value;
+  const sid = document.getElementById('session-id').value || 'session_001';
+
+  const COLS = ['timestamp_ms','label','session_id',
+    'tap_duration_ms','click_hold_ms','hesitation_ms',
+    'move_speed','move_variance','dx','dy',
+    'screen_zone','is_backspace','key_hold_ms','pause_flag'];
+
+  const lines = [COLS.join(',')];
+  rows.forEach((r, i) => {
+    lines.push([
+      i, label, sid,
+      r.tap_duration_ms, r.click_hold_ms, r.hesitation_ms,
+      r.move_speed, r.move_variance, r.dx, r.dy,
+      r.screen_zone, r.is_backspace, r.key_hold_ms, r.pause_flag
+    ].join(','));
+  });
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `bio_${label}_${sid}.csv`;
+  a.click();
+}
+
+// ── Trajectory drawing ────────────────────────────────────────────────
+function drawTrail() {
+  ctx.clearRect(0, 0, 360, 640);
+  if (trailPoints.length < 2) return;
+  const now_t = performance.now() + performance.timeOrigin;
+  for (let i = 1; i < trailPoints.length; i++) {
+    const p = trailPoints[i], pp = trailPoints[i-1];
+    const age = (now_t - p.ts) / 1500;
+    ctx.beginPath();
+    ctx.moveTo(pp.x, pp.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = `rgba(96,165,250,${Math.max(0, 1 - age) * 0.7})`;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  ghostauth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ghostauth-app
+    ports:
+      - "3000:80"       # Visit http://localhost:3000
+    restart: unless-stopped
